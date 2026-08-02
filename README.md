@@ -71,7 +71,7 @@ $PY $CLI export-range 2026-07-01 2026-07-31 \
   --kind stats --kind hrv --kind sleep \
   --output ~/garmin/july-core.json
 
-# Continue an interrupted run; the requested date range must match exactly
+# Continue an interrupted run; range must match exactly and endpoint choices come from the saved file
 $PY $CLI export-range 2026-07-01 2026-07-31 \
   --resume --output ~/garmin/july-core.json
 

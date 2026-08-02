@@ -611,6 +611,8 @@ def cmd_export_range(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("--resume 不能与 --force 同时使用")
     if args.all_kinds and args.kind:
         raise ValueError("--all 不能与 --kind 同时使用")
+    if args.resume and (args.all_kinds or args.kind):
+        raise ValueError("--resume 使用已有导出的端点列表；请不要同时提供 --kind 或 --all")
 
     start, end = resolve_range(args.start_date, args.end_date)
     output_path = Path(args.output).expanduser()
@@ -647,13 +649,12 @@ def cmd_export_range(args: argparse.Namespace) -> dict[str, Any]:
             "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         }
 
-    client = get_client(args.tokenstore)
     fetched = 0
-    skipped = 0
-    for index, date in enumerate(days):
-        if date in payload["days"]:
-            skipped += 1
-            continue
+    pending_dates = [date for date in days if date not in payload["days"]]
+    skipped = len(days) - len(pending_dates)
+    if pending_dates:
+        client = get_client(args.tokenstore)
+    for index, date in enumerate(pending_dates):
         getters = daily_getters(client, date)
         payload["days"][date] = {
             kind: safe_call(getters[kind]) for kind in kinds
@@ -662,7 +663,7 @@ def cmd_export_range(args: argparse.Namespace) -> dict[str, Any]:
         # A completed day is immediately recoverable after interruption or rate limiting.
         write_secure_json(output_path, payload, force=True)
         fetched += 1
-        if args.delay and index < len(days) - 1:
+        if args.delay and index < len(pending_dates) - 1:
             time.sleep(args.delay)
 
     if not output_path.exists():

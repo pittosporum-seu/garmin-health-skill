@@ -71,7 +71,7 @@ $PY $CLI export-range 2026-07-01 2026-07-31 \
   --kind stats --kind hrv --kind sleep \
   --output ~/garmin/july-core.json
 
-# 中断后续传，日期范围必须完全相同
+# 中断后续传，日期范围必须完全相同；端点列表由已有文件决定
 $PY $CLI export-range 2026-07-01 2026-07-31 \
   --resume --output ~/garmin/july-core.json
 

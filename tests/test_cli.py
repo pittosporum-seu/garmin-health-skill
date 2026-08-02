@@ -78,6 +78,23 @@ class CommandTests(unittest.TestCase):
             )
             self.assertTrue(args._output_already_written)
 
+            resume_args = SimpleNamespace(
+                stdout=False,
+                output=str(output),
+                resume=True,
+                force=False,
+                all_kinds=False,
+                kind=None,
+                start_date="2026-08-01",
+                end_date="2026-08-02",
+                delay=0,
+                tokenstore=Path("/unused"),
+            )
+            with patch.object(cli, "get_client", side_effect=AssertionError("no fetch needed")):
+                resumed = cli.cmd_export_range(resume_args)
+            self.assertEqual(resumed["days_fetched"], 0)
+            self.assertEqual(resumed["days_skipped"], 2)
+
     def test_parser_rejects_non_positive_stream_limit(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["activity-stream", "1", "--max-chart", "0"])
