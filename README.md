@@ -118,6 +118,18 @@ $PY $CLI analyze sleep ~/garmin/july-core.json \
 
 Sleep start/end values are kept with their Garmin source field rather than converted when timezone semantics are unclear. This is descriptive sleep-trend analysis, not sleep-disorder screening.
 
+`stress-energy` needs a range export that includes `stats`, `sleep`, `stress`, and `body-battery`. It reports Garmin's daily stress summary, Garmin-provided Body Battery `charged`/`drained` points, and any recognized Body Battery level observations without recomputing a Body Battery score.
+
+```bash
+$PY $CLI export-range 2026-07-01 2026-07-31 \
+  --kind stats --kind sleep --kind stress --kind body-battery \
+  --output ~/garmin/july-stress-energy.json
+$PY $CLI analyze stress-energy ~/garmin/july-stress-energy.json \
+  --output ~/garmin/july-stress-energy-analysis.json
+```
+
+When at least 7 varying same-date pairs exist, the result includes descriptive Pearson correlations for stress with sleep duration/steps and Body Battery charge/drain with sleep duration/steps. These are not causal findings; sleep can cross calendar dates. A Body Battery response whose shape is not recognized is explicitly reported as a limitation and is never coerced into a value.
+
 ## Activity and FIT data
 
 ```bash

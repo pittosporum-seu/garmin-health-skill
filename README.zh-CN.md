@@ -118,6 +118,18 @@ $PY $CLI analyze sleep ~/garmin/july-core.json \
 
 睡眠开始/结束时间会保留 Garmin 原字段；时区语义不明确时不擅自转换。这是描述性睡眠趋势分析，不是睡眠障碍筛查。
 
+`stress-energy` 需要包含 `stats`、`sleep`、`stress` 与 `body-battery` 的区间导出。它报告 Garmin 的日均压力摘要、Garmin 直接提供的 Body Battery `charged`/`drained` 点数，以及可识别的 Body Battery 等级观测；不会重算或替代 Garmin 的 Body Battery 分数。
+
+```bash
+$PY $CLI export-range 2026-07-01 2026-07-31 \
+  --kind stats --kind sleep --kind stress --kind body-battery \
+  --output ~/garmin/july-stress-energy.json
+$PY $CLI analyze stress-energy ~/garmin/july-stress-energy.json \
+  --output ~/garmin/july-stress-energy-analysis.json
+```
+
+同一日有至少 7 对且均有变化的记录时，输出会给出压力与睡眠时长/步数、Body Battery 充电/消耗与睡眠时长/步数的描述性 Pearson 相关。它们不构成因果结论，且睡眠可能跨越自然日。遇到无法识别结构的 Body Battery 响应，会明确列为限制，绝不强行转换为数值。
+
 ## 活动与 FIT 数据
 
 ```bash

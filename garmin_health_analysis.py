@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-ANALYSIS_KINDS = ("data-quality", "recovery", "sleep")
+ANALYSIS_KINDS = ("data-quality", "recovery", "sleep", "stress-energy")
 MEDICAL_NOTICE = (
     "Wearable data can support personal trend review but is not a medical diagnosis "
     "or a substitute for professional care."
@@ -218,6 +218,8 @@ def _metric_label(metric_name: str) -> str:
         "sleep_awake_seconds": "awake duration during the sleep period",
         "sleep_average_heart_rate_bpm": "average sleep heart rate",
         "sleep_average_stress": "average sleep stress",
+        "daily_average_stress": "average daily Garmin stress",
+        "steps": "steps",
         "training_readiness_score": "Garmin training readiness score",
     }
     return labels[metric_name]
@@ -234,6 +236,8 @@ def _metric_unit(metric_name: str) -> str:
         "sleep_awake_seconds": "seconds",
         "sleep_average_heart_rate_bpm": "bpm",
         "sleep_average_stress": "Garmin stress score",
+        "daily_average_stress": "Garmin stress score",
+        "steps": "steps",
         "training_readiness_score": "Garmin score",
     }
     return units[metric_name]
@@ -526,6 +530,285 @@ def analyze_sleep(payload: Any) -> dict[str, Any]:
         "limitations": limitations,
         "medical_notice": MEDICAL_NOTICE,
     }
+
+
+def _body_battery_summary(day: Any, expected_date: str) -> dict[str, Any]:
+    """Read only the documented daily Body Battery entry shape.
+
+    ``garminconnect`` documents a one-day response as a list containing one
+    mapping, with optional ``charged``, ``drained``, and ``[timestamp, level]``
+    observations. Other shapes are deliberately reported as unsupported rather
+    than being coerced into a potentially wrong health measurement.
+    """
+    day_mapping = _mapping(day)
+    if day_mapping is None or "body-battery" not in day_mapping:
+        return {
+            "available": False,
+            "reason": "Body Battery endpoint was not included for this date.",
+        }
+    endpoint = day_mapping["body-battery"]
+    if _is_endpoint_error(endpoint):
+        return {
+            "available": False,
+            "reason": "Body Battery endpoint reported an in-band error.",
+        }
+    if not isinstance(endpoint, list):
+        return {
+            "available": False,
+            "reason": "Unsupported Body Battery response shape; expected a list of daily entries.",
+        }
+    entries = [item for item in endpoint if isinstance(item, dict)]
+    if not entries:
+        return {
+            "available": False,
+            "reason": "Body Battery endpoint returned no daily entry.",
+        }
+    dated_entries = [entry for entry in entries if entry.get("date") == expected_date]
+    if dated_entries:
+        entry = dated_entries[0]
+    elif len(entries) == 1:
+        entry = entries[0]
+    else:
+        return {
+            "available": False,
+            "reason": "Body Battery entries cannot be matched unambiguously to this date.",
+        }
+
+    charged = _number_at(entry, ("charged",))
+    drained = _number_at(entry, ("drained",))
+    raw_levels = entry.get("bodyBatteryValuesArray")
+    levels: list[int | float] = []
+    level_limitations: list[str] = []
+    if isinstance(raw_levels, list):
+        for row in raw_levels:
+            if (
+                isinstance(row, list)
+                and len(row) == 2
+                and not isinstance(row[1], bool)
+                and isinstance(row[1], (int, float))
+            ):
+                levels.append(row[1])
+            else:
+                level_limitations.append(
+                    "An unrecognized Body Battery level row was omitted rather than coerced."
+                )
+    elif raw_levels is not None:
+        return {
+            "available": False,
+            "reason": "Unsupported Body Battery level series shape; expected [timestamp, level] rows.",
+        }
+    if charged is None and drained is None and not levels:
+        return {
+            "available": False,
+            "reason": "Body Battery entry has no recognized charged, drained, or level measurement.",
+        }
+
+    level_summary = None
+    if levels:
+        level_summary = {
+            "observations": len(levels),
+            "first_level": _rounded(levels[0]),
+            "last_level": _rounded(levels[-1]),
+            "minimum_level": _rounded(min(levels)),
+            "maximum_level": _rounded(max(levels)),
+        }
+    result = {
+        "available": True,
+        "source_date": entry.get("date") if isinstance(entry.get("date"), str) else expected_date,
+        "charged_points": _rounded(charged) if charged is not None else None,
+        "drained_points": _rounded(drained) if drained is not None else None,
+        "level_summary": level_summary,
+    }
+    if level_limitations:
+        result["limitations"] = list(dict.fromkeys(level_limitations))
+    return result
+
+
+def _body_battery_value(day: Any, date: str, field: str) -> int | float | None:
+    summary = _body_battery_summary(day, date)
+    if not summary["available"]:
+        return None
+    value = summary.get(field)
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _paired_association(
+    expected_dates: list[str],
+    left_label: str,
+    right_label: str,
+    left_value: Any,
+    right_value: Any,
+) -> dict[str, Any]:
+    """Return a descriptive, same-date Pearson correlation when coverage allows."""
+    pairs: list[tuple[str, int | float, int | float]] = []
+    for date in expected_dates:
+        left = left_value(date)
+        right = right_value(date)
+        if left is not None and right is not None:
+            pairs.append((date, left, right))
+    if len(pairs) < MIN_BASELINE_SAMPLES:
+        return {
+            "available": False,
+            "left_metric": left_label,
+            "right_metric": right_label,
+            "paired_days": len(pairs),
+            "required_paired_days": MIN_BASELINE_SAMPLES,
+            "reason": "insufficient same-date paired measurements",
+        }
+    left_mean = sum(item[1] for item in pairs) / len(pairs)
+    right_mean = sum(item[2] for item in pairs) / len(pairs)
+    left_ss = sum((item[1] - left_mean) ** 2 for item in pairs)
+    right_ss = sum((item[2] - right_mean) ** 2 for item in pairs)
+    if left_ss == 0 or right_ss == 0:
+        return {
+            "available": False,
+            "left_metric": left_label,
+            "right_metric": right_label,
+            "paired_days": len(pairs),
+            "reason": "one paired metric has no variation in the available dates",
+        }
+    covariance_sum = sum(
+        (item[1] - left_mean) * (item[2] - right_mean) for item in pairs
+    )
+    return {
+        "available": True,
+        "left_metric": left_label,
+        "right_metric": right_label,
+        "paired_days": len(pairs),
+        "date_window": {"start_date": pairs[0][0], "end_date": pairs[-1][0]},
+        "pearson_correlation": _rounded(covariance_sum / (left_ss * right_ss) ** 0.5),
+        "scope": "descriptive association between values recorded on the same calendar date; not causal evidence",
+    }
+
+
+def _latest_stress_energy_date(
+    export: dict[str, Any], expected_dates: list[str]
+) -> str | None:
+    for date in reversed(expected_dates):
+        day = export["days"].get(date)
+        day_mapping = _mapping(day)
+        if metric_value(day, "daily_average_stress") is not None:
+            return date
+        if day_mapping is not None and "body-battery" in day_mapping:
+            return date
+    return None
+
+
+def analyze_stress_energy(payload: Any) -> dict[str, Any]:
+    """Describe Garmin stress and Body Battery evidence without causal claims."""
+    export = validate_range_export(payload)
+    expected_dates = _date_span(export["start_date"], export["end_date"])
+    latest_date = _latest_stress_energy_date(export, expected_dates)
+    quality = analyze_data_quality(export)
+    if latest_date is None:
+        stress_evidence: dict[str, Any] = {}
+        body_battery: dict[str, Any] = {
+            "available": False,
+            "reason": "No stress or Body Battery endpoint exists in the requested period.",
+        }
+        latest_context: dict[str, Any] = {}
+        associations: dict[str, Any] = {}
+        comparisons_available = 0
+    else:
+        latest_day = export["days"].get(latest_date)
+        stress_evidence = _metric_baseline_evidence(
+            export, "daily_average_stress", latest_date, expected_dates
+        )
+        body_battery = _body_battery_summary(latest_day, latest_date)
+        latest_context = {
+            "sleep_duration_seconds": metric_value(latest_day, "sleep_duration_seconds"),
+            "steps": metric_value(latest_day, "steps"),
+            "body_battery": body_battery,
+        }
+        associations = {
+            "daily_stress_and_sleep_duration": _paired_association(
+                expected_dates,
+                "average daily Garmin stress",
+                "sleep duration",
+                lambda date: metric_value(export["days"].get(date), "daily_average_stress"),
+                lambda date: metric_value(export["days"].get(date), "sleep_duration_seconds"),
+            ),
+            "daily_stress_and_steps": _paired_association(
+                expected_dates,
+                "average daily Garmin stress",
+                "steps",
+                lambda date: metric_value(export["days"].get(date), "daily_average_stress"),
+                lambda date: metric_value(export["days"].get(date), "steps"),
+            ),
+            "body_battery_charged_and_sleep_duration": _paired_association(
+                expected_dates,
+                "Garmin Body Battery charged points",
+                "sleep duration",
+                lambda date: _body_battery_value(
+                    export["days"].get(date), date, "charged_points"
+                ),
+                lambda date: metric_value(export["days"].get(date), "sleep_duration_seconds"),
+            ),
+            "body_battery_drained_and_steps": _paired_association(
+                expected_dates,
+                "Garmin Body Battery drained points",
+                "steps",
+                lambda date: _body_battery_value(
+                    export["days"].get(date), date, "drained_points"
+                ),
+                lambda date: metric_value(export["days"].get(date), "steps"),
+            ),
+        }
+        comparisons_available = int(stress_evidence["comparison"]["available"])
+
+    association_count = sum(
+        item["available"] for item in associations.values()
+    )
+    if comparisons_available and body_battery["available"] and association_count:
+        confidence = "moderate_stress_energy_coverage"
+    elif comparisons_available or body_battery["available"] or association_count:
+        confidence = "limited_stress_energy_coverage"
+    else:
+        confidence = "insufficient_stress_energy_coverage"
+
+    limitations = [
+        "Garmin stress and Body Battery are device-derived estimates, not clinical measurements.",
+        "Same-date associations are descriptive only and do not establish that sleep, activity, stress, or Body Battery caused one another.",
+        "Sleep may span calendar dates; the analysis does not infer a timezone or shift measurements between dates.",
+        "Body Battery charging and draining values are reported from Garmin and are not recomputed from the level series.",
+    ]
+    if latest_date is None:
+        limitations.append("No supported stress or Body Battery measurement exists in the requested period.")
+    elif not body_battery["available"]:
+        limitations.append(body_battery["reason"])
+    elif body_battery.get("limitations"):
+        limitations.extend(body_battery["limitations"])
+    if latest_date is not None and not comparisons_available:
+        limitations.append(
+            f"At least {MIN_BASELINE_SAMPLES} prior daily stress measurements are required before a personal stress comparison is emitted."
+        )
+    if associations and not association_count:
+        limitations.append(
+            f"At least {MIN_BASELINE_SAMPLES} same-date paired measurements with variation are required before an association is emitted."
+        )
+    return {
+        "schema_version": 1,
+        "analysis": "stress-energy",
+        "period": {
+            "start_date": export["start_date"],
+            "end_date": export["end_date"],
+            "latest_stress_energy_date": latest_date,
+        },
+        "data_quality": {
+            "date_coverage_rate": quality["period"]["date_coverage_rate"],
+            "metric_sample_counts": quality["metric_sample_counts"],
+            "readiness": quality["analysis_readiness"],
+        },
+        "evidence": {"daily_average_stress": stress_evidence},
+        "latest_context": latest_context,
+        "same_date_associations": associations,
+        "comparisons_available": comparisons_available,
+        "confidence": confidence,
+        "limitations": limitations,
+        "medical_notice": MEDICAL_NOTICE,
+    }
+
+
 def analyze_export(kind: str, payload: Any) -> dict[str, Any]:
     if kind == "data-quality":
         return analyze_data_quality(payload)
@@ -533,4 +816,6 @@ def analyze_export(kind: str, payload: Any) -> dict[str, Any]:
         return analyze_recovery(payload)
     if kind == "sleep":
         return analyze_sleep(payload)
+    if kind == "stress-energy":
+        return analyze_stress_energy(payload)
     raise AnalysisInputError(f"unsupported analysis kind: {kind}")

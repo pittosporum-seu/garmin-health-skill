@@ -107,6 +107,13 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(args.kind, "sleep")
         self.assertEqual(args.input, Path("range.json"))
 
+    def test_parser_accepts_offline_stress_energy_analysis(self):
+        args = cli.build_parser().parse_args(
+            ["analyze", "stress-energy", "range.json", "--stdout"]
+        )
+        self.assertEqual(args.command, "analyze")
+        self.assertEqual(args.kind, "stress-energy")
+
     def test_analysis_command_reads_local_export_without_client(self):
         payload = {
             "schema_version": 1,

@@ -11,6 +11,7 @@ from garmin_health_analysis import (
     analyze_data_quality,
     analyze_recovery,
     analyze_sleep,
+    analyze_stress_energy,
     validate_range_export,
 )
 
@@ -209,6 +210,89 @@ class DataQualityAnalysisTests(unittest.TestCase):
         self.assertIsNone(result["period"]["latest_sleep_date"])
         self.assertEqual(result["evidence"], {})
         self.assertIn("No supported sleep measurements", result["limitations"][-1])
+
+    def test_stress_energy_reports_garmin_body_battery_and_descriptive_pairings(self):
+        days = {}
+        for day in range(1, 9):
+            payload = daily_payload(day)
+            payload["stats"]["totalSteps"] = day * 1000
+            payload["stress"]["avgStressLevel"] = 20 + day
+            payload["sleep"]["dailySleepDTO"]["sleepTimeSeconds"] = 21600 + day * 600
+            payload["body-battery"] = [
+                {
+                    "date": f"2026-08-{day:02d}",
+                    "charged": day * 4,
+                    "drained": day * 6,
+                    "bodyBatteryValuesArray": [[1, 70], [2, 65], [3, 68]],
+                }
+            ]
+            days[f"2026-08-{day:02d}"] = payload
+        payload = range_export(days)
+        payload["end_date"] = "2026-08-08"
+        payload["kinds"].append("body-battery")
+
+        result = analyze_stress_energy(payload)
+
+        body_battery = result["latest_context"]["body_battery"]
+        stress = result["evidence"]["daily_average_stress"]
+        self.assertEqual(result["period"]["latest_stress_energy_date"], "2026-08-08")
+        self.assertTrue(body_battery["available"])
+        self.assertEqual(body_battery["charged_points"], 32)
+        self.assertEqual(body_battery["drained_points"], 48)
+        self.assertEqual(body_battery["level_summary"]["minimum_level"], 65)
+        self.assertTrue(stress["comparison"]["available"])
+        association = result["same_date_associations"]["daily_stress_and_steps"]
+        self.assertTrue(association["available"])
+        self.assertEqual(association["paired_days"], 8)
+        self.assertEqual(association["pearson_correlation"], 1)
+        self.assertIn("not causal", association["scope"])
+
+    def test_stress_energy_preserves_unsupported_body_battery_shape_as_limitation(self):
+        payload = range_export(
+            {
+                "2026-08-01": {
+                    "stress": {"avgStressLevel": 31},
+                    "body-battery": {"charged": 10, "drained": 20},
+                }
+            }
+        )
+        payload["end_date"] = "2026-08-01"
+        payload["kinds"].append("body-battery")
+
+        result = analyze_stress_energy(payload)
+
+        body_battery = result["latest_context"]["body_battery"]
+        self.assertFalse(body_battery["available"])
+        self.assertIn("Unsupported Body Battery response shape", body_battery["reason"])
+        self.assertIn(body_battery["reason"], result["limitations"])
+
+    def test_stress_energy_does_not_coerce_malformed_body_battery_level_rows(self):
+        payload = range_export(
+            {
+                "2026-08-01": {
+                    "stress": {"avgStressLevel": 31},
+                    "body-battery": [
+                        {
+                            "date": "2026-08-01",
+                            "charged": 0,
+                            "drained": 12,
+                            "bodyBatteryValuesArray": [[1, {"unknown": "level"}]],
+                        }
+                    ],
+                }
+            }
+        )
+        payload["end_date"] = "2026-08-01"
+        payload["kinds"].append("body-battery")
+
+        result = analyze_stress_energy(payload)
+
+        body_battery = result["latest_context"]["body_battery"]
+        self.assertTrue(body_battery["available"])
+        self.assertEqual(body_battery["charged_points"], 0)
+        self.assertIsNone(body_battery["level_summary"])
+        self.assertIn("omitted rather than coerced", body_battery["limitations"][0])
+        self.assertIn(body_battery["limitations"][0], result["limitations"])
 
 
 if __name__ == "__main__":

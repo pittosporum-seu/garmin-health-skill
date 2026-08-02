@@ -38,7 +38,7 @@ Add an offline, read-only analysis layer on top of `export-range` files. It must
 - Detect only descriptive schedule/duration variation; do not diagnose sleep disorders.
 - Test missing fields, zero values, and a normal range export; update both READMEs.
 
-### Phase 4: Stress and energy analysis
+### Phase 4: Stress and energy analysis — Complete
 
 **Acceptance criteria**
 
