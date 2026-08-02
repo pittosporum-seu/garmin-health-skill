@@ -33,7 +33,7 @@ CLI=~/.hermes/skills/garmin-health/garmin_health_cli.py
 $PY $CLI status
 ```
 
-默认 token 路径为 `~/.hermes/skills/garmin/tokens`，可兼容旧 `garmin` skill。若要隔离账号，请将 `GARMIN_TOKENSTORE` 设为你控制的目录。
+默认 token 路径为 `~/.hermes/skills/garmin-health/tokens`。若要隔离账号，请将 `GARMIN_TOKENSTORE` 设为你控制的目录。
 
 token 过期时，只能通过环境变量提供登录凭据；不要把密码写入命令行参数或文件：
 

@@ -23,7 +23,7 @@ from typing import Any, Callable
 
 
 DEFAULT_TOKENSTORE = Path(
-    os.getenv("GARMIN_TOKENSTORE", "~/.hermes/skills/garmin/tokens")
+    os.getenv("GARMIN_TOKENSTORE", "~/.hermes/skills/garmin-health/tokens")
 ).expanduser()
 DEFAULT_MAX_CHART = 100_000
 DEFAULT_RANGE_KINDS = ("stats", "hrv", "sleep", "training-readiness")

@@ -18,7 +18,7 @@ CLI=~/.hermes/skills/garmin-health/garmin_health_cli.py
 $PY $CLI status
 ```
 
-默认 token 目录是 `~/.hermes/skills/garmin/tokens`，以兼容旧 `garmin` skill。token 失效时，只从环境变量读取凭据，避免将密码写入 shell 历史：
+默认 token 目录是 `~/.hermes/skills/garmin-health/tokens`。token 失效时，只从环境变量读取凭据，避免将密码写入 shell 历史：
 
 ```bash
 GARMIN_EMAIL='账号' GARMIN_PASSWORD='密码' $PY $CLI login

@@ -33,7 +33,7 @@ CLI=~/.hermes/skills/garmin-health/garmin_health_cli.py
 $PY $CLI status
 ```
 
-The default token directory is `~/.hermes/skills/garmin/tokens`, preserving compatibility with the earlier `garmin` skill. To isolate an account, set `GARMIN_TOKENSTORE` to a directory you control.
+The default token directory is `~/.hermes/skills/garmin-health/tokens`. To isolate an account, set `GARMIN_TOKENSTORE` to a directory you control.
 
 If a saved token expires, provide credentials only through environment variables—never command-line arguments or files:
 
