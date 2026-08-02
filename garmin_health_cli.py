@@ -1015,8 +1015,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_output_options(export_range)
     export_range.set_defaults(handler=cmd_export_range)
 
+    from garmin_health_analysis import ANALYSIS_KINDS
+
     analyze = sub.add_parser("analyze", help="离线分析已有的 export-range JSON，不发起 Garmin 网络请求")
-    analyze.add_argument("kind", choices=("data-quality",))
+    analyze.add_argument("kind", choices=ANALYSIS_KINDS)
     analyze.add_argument("input", type=Path, help="export-range 输出 JSON 的路径")
     add_output_options(analyze)
     analyze.set_defaults(handler=cmd_analyze)

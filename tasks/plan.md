@@ -22,7 +22,7 @@ Add an offline, read-only analysis layer on top of `export-range` files. It must
 - Add focused pytest fixtures for complete, missing, and endpoint-error exports.
 - Document the command and its privacy boundary in both READMEs.
 
-### Phase 2: Recovery baseline
+### Phase 2: Recovery baseline — Complete
 
 **Acceptance criteria**
 

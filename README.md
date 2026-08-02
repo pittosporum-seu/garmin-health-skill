@@ -100,6 +100,15 @@ $PY $CLI analyze data-quality ~/garmin/july-core.json \
 
 `data-quality` is the required first step before interpreting a trend. It reports requested-date coverage, missing dates, endpoint errors, availability by endpoint, and sample counts for documented summaries such as sleep duration, sleep HRV, resting heart rate, stress, and training readiness. It does not treat missing data as zero, assess device accuracy, or make medical claims.
 
+`recovery` compares the latest day with up to 28 earlier personal observations for Garmin sleep HRV, resting heart rate, sleep duration, and Garmin training readiness. A metric needs at least 7 prior measurements before the result includes a median, median absolute deviation (MAD), and latest-minus-median value; otherwise it reports only the data limitation.
+
+```bash
+$PY $CLI analyze recovery ~/garmin/july-core.json \
+  --output ~/garmin/july-recovery.json
+```
+
+It deliberately does not calculate a replacement “recovery score”, diagnose a condition, or claim why a measurement changed.
+
 ## Activity and FIT data
 
 ```bash

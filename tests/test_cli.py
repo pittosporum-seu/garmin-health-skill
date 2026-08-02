@@ -101,10 +101,10 @@ class CommandTests(unittest.TestCase):
 
     def test_parser_accepts_offline_data_quality_analysis(self):
         args = cli.build_parser().parse_args(
-            ["analyze", "data-quality", "range.json", "--stdout"]
+            ["analyze", "recovery", "range.json", "--stdout"]
         )
         self.assertEqual(args.command, "analyze")
-        self.assertEqual(args.kind, "data-quality")
+        self.assertEqual(args.kind, "recovery")
         self.assertEqual(args.input, Path("range.json"))
 
     def test_analysis_command_reads_local_export_without_client(self):

@@ -100,6 +100,15 @@ $PY $CLI analyze data-quality ~/garmin/july-core.json \
 
 `data-quality` 是解读趋势前的必经步骤。它报告请求日期覆盖率、缺失日期、端点错误、各端点可用性，以及睡眠时长、睡眠 HRV、静息心率、压力和训练准备度等已定义摘要字段的样本量。它不把缺失当作零，不评估设备准确性，也不作医疗结论。
 
+`recovery` 将最新有效日与此前最多 28 个个人观测比较，覆盖 Garmin 睡眠 HRV、静息心率、睡眠时长和 Garmin 训练准备度。单一指标至少需要 7 个先前观测，结果才会给出中位数、中位数绝对偏差（MAD）和“最新值减中位数”；否则只报告数据不足的限制。
+
+```bash
+$PY $CLI analyze recovery ~/garmin/july-core.json \
+  --output ~/garmin/july-recovery.json
+```
+
+它刻意不计算替代性的“恢复分数”，不诊断疾病，也不声称某个变化的原因。
+
 ## 活动与 FIT 数据
 
 ```bash

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-ANALYSIS_KINDS = ("data-quality",)
+ANALYSIS_KINDS = ("data-quality", "recovery")
 MEDICAL_NOTICE = (
     "Wearable data can support personal trend review but is not a medical diagnosis "
     "or a substitute for professional care."
@@ -31,6 +31,14 @@ METRIC_SPECS = (
     ("daily_average_stress", "stress", ("avgStressLevel",)),
     ("training_readiness_score", "training-readiness", ("score",)),
 )
+RECOVERY_METRICS = (
+    "hrv_last_night_ms",
+    "resting_heart_rate_bpm",
+    "sleep_duration_seconds",
+    "training_readiness_score",
+)
+MIN_BASELINE_SAMPLES = 7
+MAX_BASELINE_SAMPLES = 28
 
 
 class AnalysisInputError(ValueError):
@@ -162,6 +170,94 @@ def _endpoint_coverage(
     return results
 
 
+def _median(values: list[int | float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return float(ordered[middle])
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _rounded(value: int | float) -> int | float:
+    rounded = round(float(value), 4)
+    return int(rounded) if rounded.is_integer() else rounded
+
+
+def _metric_label(metric_name: str) -> str:
+    labels = {
+        "hrv_last_night_ms": "Garmin sleep HRV Status reading",
+        "resting_heart_rate_bpm": "resting heart rate",
+        "sleep_duration_seconds": "sleep duration",
+        "training_readiness_score": "Garmin training readiness score",
+    }
+    return labels[metric_name]
+
+
+def _metric_unit(metric_name: str) -> str:
+    units = {
+        "hrv_last_night_ms": "milliseconds as provided by Garmin",
+        "resting_heart_rate_bpm": "bpm",
+        "sleep_duration_seconds": "seconds",
+        "training_readiness_score": "Garmin score",
+    }
+    return units[metric_name]
+
+
+def _latest_recovery_date(export: dict[str, Any], expected_dates: list[str]) -> str | None:
+    for date in reversed(expected_dates):
+        day = export["days"].get(date)
+        if any(metric_value(day, metric) is not None for metric in RECOVERY_METRICS):
+            return date
+    return None
+
+
+def _recovery_metric_evidence(
+    export: dict[str, Any], metric_name: str, latest_date: str, expected_dates: list[str]
+) -> dict[str, Any]:
+    latest_value = metric_value(export["days"].get(latest_date), metric_name)
+    evidence: dict[str, Any] = {
+        "label": _metric_label(metric_name),
+        "unit": _metric_unit(metric_name),
+        "latest_date": latest_date,
+        "latest_value": latest_value,
+    }
+    if latest_value is None:
+        evidence["comparison"] = {
+            "available": False,
+            "reason": "no measurement for this metric on the latest recovery date",
+        }
+        return evidence
+
+    prior = [
+        (date, metric_value(export["days"].get(date), metric_name))
+        for date in expected_dates
+        if date < latest_date
+    ]
+    prior = [(date, value) for date, value in prior if value is not None][-MAX_BASELINE_SAMPLES:]
+    values = [value for _, value in prior]
+    if len(values) < MIN_BASELINE_SAMPLES:
+        evidence["comparison"] = {
+            "available": False,
+            "reason": "insufficient prior personal measurements",
+            "required_samples": MIN_BASELINE_SAMPLES,
+            "sample_count": len(values),
+        }
+        return evidence
+
+    median = _median(values)
+    mad = _median([abs(value - median) for value in values])
+    delta = latest_value - median
+    evidence["comparison"] = {
+        "available": True,
+        "baseline_window": {"start_date": prior[0][0], "end_date": prior[-1][0]},
+        "sample_count": len(values),
+        "median": _rounded(median),
+        "median_absolute_deviation": _rounded(mad),
+        "latest_minus_median": _rounded(delta),
+    }
+    return evidence
+
+
 def analyze_data_quality(payload: Any) -> dict[str, Any]:
     """Report export completeness before interpreting any health metric."""
     export = validate_range_export(payload)
@@ -226,7 +322,65 @@ def analyze_data_quality(payload: Any) -> dict[str, Any]:
     }
 
 
+def analyze_recovery(payload: Any) -> dict[str, Any]:
+    """Compare the latest available recovery evidence with a personal baseline."""
+    export = validate_range_export(payload)
+    expected_dates = _date_span(export["start_date"], export["end_date"])
+    latest_date = _latest_recovery_date(export, expected_dates)
+    quality = analyze_data_quality(export)
+    if latest_date is None:
+        evidence: dict[str, Any] = {}
+        comparisons_available = 0
+    else:
+        evidence = {
+            metric: _recovery_metric_evidence(export, metric, latest_date, expected_dates)
+            for metric in RECOVERY_METRICS
+        }
+        comparisons_available = sum(
+            item["comparison"]["available"] for item in evidence.values()
+        )
+
+    if comparisons_available >= 3:
+        confidence = "moderate_personal_baseline_coverage"
+    elif comparisons_available:
+        confidence = "limited_personal_baseline_coverage"
+    else:
+        confidence = "insufficient_personal_baseline_coverage"
+
+    limitations = [
+        "No composite recovery or medical score is calculated by this analysis.",
+        "Garmin sleep HRV Status is a sleep-derived summary, not timestamped beat-to-beat RR data.",
+        "Training readiness is Garmin's own multi-factor score and is reported as evidence, not recomputed.",
+        "Changes can reflect training, sleep, stress, device wear, or other factors; this output does not establish a cause.",
+    ]
+    if latest_date is None:
+        limitations.append("No supported recovery summary measurement exists in the requested period.")
+    elif not comparisons_available:
+        limitations.append(
+            f"At least {MIN_BASELINE_SAMPLES} prior measurements per metric are required before a personal comparison is emitted."
+        )
+    return {
+        "schema_version": 1,
+        "analysis": "recovery",
+        "period": {
+            "start_date": export["start_date"],
+            "end_date": export["end_date"],
+            "latest_recovery_date": latest_date,
+        },
+        "data_quality": {
+            "date_coverage_rate": quality["period"]["date_coverage_rate"],
+            "metric_sample_counts": quality["metric_sample_counts"],
+            "readiness": quality["analysis_readiness"],
+        },
+        "evidence": evidence,
+        "comparisons_available": comparisons_available,
+        "confidence": confidence,
+        "limitations": limitations,
+        "medical_notice": MEDICAL_NOTICE,
+    }
 def analyze_export(kind: str, payload: Any) -> dict[str, Any]:
     if kind == "data-quality":
         return analyze_data_quality(payload)
+    if kind == "recovery":
+        return analyze_recovery(payload)
     raise AnalysisInputError(f"unsupported analysis kind: {kind}")

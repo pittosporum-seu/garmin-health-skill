@@ -91,6 +91,14 @@ $PY $CLI analyze data-quality ~/garmin/july-core.json --output ~/garmin/july-dat
 
 检查请求日期覆盖、端点错误、缺失日期及各摘要字段的有效样本数。数据缺失、端点错误或采样不足时，只说明限制，不把它们解释为生理数值或健康结论。
 
+需要审阅恢复趋势时，运行 `recovery`。它只比较最新有效日与此前最多 28 个个人观测，覆盖睡眠 HRV、静息心率、睡眠时长和 Garmin training readiness；单指标少于 7 个先前观测时，不输出基线差异：
+
+```bash
+$PY $CLI analyze recovery ~/garmin/july-core.json --output ~/garmin/july-recovery.json
+```
+
+中位数、MAD 和最新值差异是描述性证据，不生成替代的恢复总分、疾病结论或因果解释。
+
 ## 活动、逐秒流和 FIT
 
 ```bash
