@@ -83,6 +83,14 @@ $PY $CLI export-range 2026-07-01 2026-07-31 --resume --output ~/garmin/july.json
 
 每一个完成日期都会立即安全写入。`--resume` 只能用于同一日期范围的该导出文件，端点列表也由该文件决定，且不能与 `--force`、`--kind` 或 `--all` 并用。对大量日期请求时保留默认 `--delay 0.25`，不要通过并发绕过服务端限制。
 
+导出后先运行离线数据质量检查，再解释任何趋势。该命令仅读本地文件，不会认证或请求 Garmin：
+
+```bash
+$PY $CLI analyze data-quality ~/garmin/july-core.json --output ~/garmin/july-data-quality.json
+```
+
+检查请求日期覆盖、端点错误、缺失日期及各摘要字段的有效样本数。数据缺失、端点错误或采样不足时，只说明限制，不把它们解释为生理数值或健康结论。
+
 ## 活动、逐秒流和 FIT
 
 ```bash

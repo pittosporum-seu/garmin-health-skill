@@ -682,6 +682,13 @@ def cmd_export_range(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def cmd_analyze(args: argparse.Namespace) -> dict[str, Any]:
+    """Run a reproducible offline analysis over an existing secure range export."""
+    from garmin_health_analysis import analyze_export, load_range_export
+
+    return analyze_export(args.kind, load_range_export(args.input))
+
+
 def cmd_activities(args: argparse.Namespace) -> dict[str, Any]:
     client = get_client(args.tokenstore)
     activities = client.get_activities(args.start, args.limit, args.type)
@@ -956,7 +963,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--tokenstore",
         type=Path,
         default=DEFAULT_TOKENSTORE,
-        help="token 目录；默认复用旧 garmin skill 的 token",
+        help="token 目录；默认使用当前 garmin-health skill 的 token",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -1007,6 +1014,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_output_options(export_range)
     export_range.set_defaults(handler=cmd_export_range)
+
+    analyze = sub.add_parser("analyze", help="离线分析已有的 export-range JSON，不发起 Garmin 网络请求")
+    analyze.add_argument("kind", choices=("data-quality",))
+    analyze.add_argument("input", type=Path, help="export-range 输出 JSON 的路径")
+    add_output_options(analyze)
+    analyze.set_defaults(handler=cmd_analyze)
 
     activities = sub.add_parser("activities", help="列出原始活动记录")
     activities.add_argument("--limit", type=positive_int, default=20)

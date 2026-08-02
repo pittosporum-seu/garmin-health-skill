@@ -13,7 +13,7 @@ Add an offline, read-only analysis layer on top of `export-range` files. It must
 
 ## Task list
 
-### Phase 1: Foundation and data quality
+### Phase 1: Foundation and data quality — Complete
 
 **Acceptance criteria**
 

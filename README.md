@@ -89,6 +89,17 @@ Each fully fetched date is immediately checkpointed. Failed or unavailable endpo
 }
 ```
 
+## Offline analysis
+
+`analyze` reads an existing `export-range` JSON locally. It does not authenticate or make a Garmin network request, which keeps the analysis reproducible from the input file.
+
+```bash
+$PY $CLI analyze data-quality ~/garmin/july-core.json \
+  --output ~/garmin/july-data-quality.json
+```
+
+`data-quality` is the required first step before interpreting a trend. It reports requested-date coverage, missing dates, endpoint errors, availability by endpoint, and sample counts for documented summaries such as sleep duration, sleep HRV, resting heart rate, stress, and training readiness. It does not treat missing data as zero, assess device accuracy, or make medical claims.
+
 ## Activity and FIT data
 
 ```bash

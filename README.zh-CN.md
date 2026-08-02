@@ -89,6 +89,17 @@ $PY $CLI export-range 2026-07-01 2026-07-31 \
 }
 ```
 
+## 离线分析
+
+`analyze` 只读取已有的 `export-range` JSON；不会认证，也不会发起 Garmin 网络请求，因此分析可由输入文件完整复现。
+
+```bash
+$PY $CLI analyze data-quality ~/garmin/july-core.json \
+  --output ~/garmin/july-data-quality.json
+```
+
+`data-quality` 是解读趋势前的必经步骤。它报告请求日期覆盖率、缺失日期、端点错误、各端点可用性，以及睡眠时长、睡眠 HRV、静息心率、压力和训练准备度等已定义摘要字段的样本量。它不把缺失当作零，不评估设备准确性，也不作医疗结论。
+
 ## 活动与 FIT 数据
 
 ```bash

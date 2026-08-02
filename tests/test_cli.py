@@ -99,6 +99,32 @@ class CommandTests(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["activity-stream", "1", "--max-chart", "0"])
 
+    def test_parser_accepts_offline_data_quality_analysis(self):
+        args = cli.build_parser().parse_args(
+            ["analyze", "data-quality", "range.json", "--stdout"]
+        )
+        self.assertEqual(args.command, "analyze")
+        self.assertEqual(args.kind, "data-quality")
+        self.assertEqual(args.input, Path("range.json"))
+
+    def test_analysis_command_reads_local_export_without_client(self):
+        payload = {
+            "schema_version": 1,
+            "type": "garmin-health-range",
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-01",
+            "kinds": ["stats"],
+            "days": {"2026-08-01": {"stats": {"restingHeartRate": 50}}},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "range.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            result = cli.cmd_analyze(
+                SimpleNamespace(kind="data-quality", input=path)
+            )
+        self.assertEqual(result["analysis"], "data-quality")
+        self.assertEqual(result["period"]["days_with_usable_payload"], 1)
+
     def test_unknown_fit_field_keeps_definition_and_raw_value(self):
         field = SimpleNamespace(
             name="unknown_127",
