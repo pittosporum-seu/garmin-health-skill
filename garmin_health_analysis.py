@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-ANALYSIS_KINDS = ("data-quality", "recovery")
+ANALYSIS_KINDS = ("data-quality", "recovery", "sleep")
 MEDICAL_NOTICE = (
     "Wearable data can support personal trend review but is not a medical diagnosis "
     "or a substitute for professional care."
@@ -26,6 +26,10 @@ METRIC_SPECS = (
     ("hrv_last_night_ms", "hrv", ("hrvSummary", "lastNightAvg")),
     ("hrv_weekly_average_ms", "hrv", ("hrvSummary", "weeklyAvg")),
     ("sleep_duration_seconds", "sleep", ("dailySleepDTO", "sleepTimeSeconds")),
+    ("sleep_deep_seconds", "sleep", ("dailySleepDTO", "deepSleepSeconds")),
+    ("sleep_light_seconds", "sleep", ("dailySleepDTO", "lightSleepSeconds")),
+    ("sleep_rem_seconds", "sleep", ("dailySleepDTO", "remSleepSeconds")),
+    ("sleep_awake_seconds", "sleep", ("dailySleepDTO", "awakeSleepSeconds")),
     ("sleep_average_heart_rate_bpm", "sleep", ("dailySleepDTO", "avgHeartRate")),
     ("sleep_average_stress", "sleep", ("dailySleepDTO", "avgSleepStress")),
     ("daily_average_stress", "stress", ("avgStressLevel",)),
@@ -39,6 +43,16 @@ RECOVERY_METRICS = (
 )
 MIN_BASELINE_SAMPLES = 7
 MAX_BASELINE_SAMPLES = 28
+SLEEP_METRICS = (
+    "sleep_duration_seconds",
+    "sleep_deep_seconds",
+    "sleep_light_seconds",
+    "sleep_rem_seconds",
+    "sleep_awake_seconds",
+    "sleep_average_heart_rate_bpm",
+    "sleep_average_stress",
+    "hrv_last_night_ms",
+)
 
 
 class AnalysisInputError(ValueError):
@@ -80,6 +94,16 @@ def _number_at(value: Any, path: tuple[str, ...]) -> int | float | None:
         current = current_mapping[key]
     if isinstance(current, bool) or not isinstance(current, (int, float)):
         return None
+    return current
+
+
+def _value_at(value: Any, path: tuple[str, ...]) -> Any:
+    current: Any = _mapping(value)
+    for key in path:
+        current_mapping = _mapping(current)
+        if current_mapping is None or key not in current_mapping:
+            return None
+        current = current_mapping[key]
     return current
 
 
@@ -188,6 +212,12 @@ def _metric_label(metric_name: str) -> str:
         "hrv_last_night_ms": "Garmin sleep HRV Status reading",
         "resting_heart_rate_bpm": "resting heart rate",
         "sleep_duration_seconds": "sleep duration",
+        "sleep_deep_seconds": "deep sleep duration",
+        "sleep_light_seconds": "light sleep duration",
+        "sleep_rem_seconds": "REM sleep duration",
+        "sleep_awake_seconds": "awake duration during the sleep period",
+        "sleep_average_heart_rate_bpm": "average sleep heart rate",
+        "sleep_average_stress": "average sleep stress",
         "training_readiness_score": "Garmin training readiness score",
     }
     return labels[metric_name]
@@ -198,6 +228,12 @@ def _metric_unit(metric_name: str) -> str:
         "hrv_last_night_ms": "milliseconds as provided by Garmin",
         "resting_heart_rate_bpm": "bpm",
         "sleep_duration_seconds": "seconds",
+        "sleep_deep_seconds": "seconds",
+        "sleep_light_seconds": "seconds",
+        "sleep_rem_seconds": "seconds",
+        "sleep_awake_seconds": "seconds",
+        "sleep_average_heart_rate_bpm": "bpm",
+        "sleep_average_stress": "Garmin stress score",
         "training_readiness_score": "Garmin score",
     }
     return units[metric_name]
@@ -211,7 +247,7 @@ def _latest_recovery_date(export: dict[str, Any], expected_dates: list[str]) -> 
     return None
 
 
-def _recovery_metric_evidence(
+def _metric_baseline_evidence(
     export: dict[str, Any], metric_name: str, latest_date: str, expected_dates: list[str]
 ) -> dict[str, Any]:
     latest_value = metric_value(export["days"].get(latest_date), metric_name)
@@ -224,7 +260,7 @@ def _recovery_metric_evidence(
     if latest_value is None:
         evidence["comparison"] = {
             "available": False,
-            "reason": "no measurement for this metric on the latest recovery date",
+            "reason": "no measurement for this metric on the latest analysis date",
         }
         return evidence
 
@@ -333,7 +369,7 @@ def analyze_recovery(payload: Any) -> dict[str, Any]:
         comparisons_available = 0
     else:
         evidence = {
-            metric: _recovery_metric_evidence(export, metric, latest_date, expected_dates)
+            metric: _metric_baseline_evidence(export, metric, latest_date, expected_dates)
             for metric in RECOVERY_METRICS
         }
         comparisons_available = sum(
@@ -378,9 +414,123 @@ def analyze_recovery(payload: Any) -> dict[str, Any]:
         "limitations": limitations,
         "medical_notice": MEDICAL_NOTICE,
     }
+
+
+def _latest_sleep_date(export: dict[str, Any], expected_dates: list[str]) -> str | None:
+    for date in reversed(expected_dates):
+        day = export["days"].get(date)
+        if any(metric_value(day, metric) is not None for metric in SLEEP_METRICS):
+            return date
+    return None
+
+
+def _sleep_schedule_sources(day: Any) -> dict[str, Any]:
+    sleep = _mapping(_mapping(day).get("sleep") if _mapping(day) else None)
+    dto = _mapping(sleep.get("dailySleepDTO") if sleep else None)
+    if dto is None:
+        return {}
+    result: dict[str, Any] = {}
+    for output_name, field_names in (
+        ("start", ("sleepStartTimestampLocal", "sleepStartTimestampGMT")),
+        ("end", ("sleepEndTimestampLocal", "sleepEndTimestampGMT")),
+    ):
+        for field_name in field_names:
+            value = _value_at(dto, (field_name,))
+            if value is not None:
+                result[output_name] = {"source_field": field_name, "value": value}
+                break
+    return result
+
+
+def _sleep_stage_distribution(day: Any) -> dict[str, Any] | None:
+    stage_metrics = {
+        "deep": "sleep_deep_seconds",
+        "light": "sleep_light_seconds",
+        "rem": "sleep_rem_seconds",
+    }
+    values = {name: metric_value(day, metric) for name, metric in stage_metrics.items()}
+    known_values = {name: value for name, value in values.items() if value is not None}
+    total = sum(known_values.values())
+    if not known_values or total <= 0:
+        return None
+    return {
+        "recorded_stage_seconds": total,
+        "stages": {
+            name: {
+                "seconds": value,
+                "proportion_of_recorded_stages": _rounded(value / total),
+            }
+            for name, value in known_values.items()
+        },
+    }
+
+
+def analyze_sleep(payload: Any) -> dict[str, Any]:
+    """Describe sleep evidence and personal variation without diagnosing sleep."""
+    export = validate_range_export(payload)
+    expected_dates = _date_span(export["start_date"], export["end_date"])
+    latest_date = _latest_sleep_date(export, expected_dates)
+    quality = analyze_data_quality(export)
+    if latest_date is None:
+        evidence: dict[str, Any] = {}
+        stage_distribution = None
+        schedule_sources: dict[str, Any] = {}
+        comparisons_available = 0
+    else:
+        evidence = {
+            metric: _metric_baseline_evidence(export, metric, latest_date, expected_dates)
+            for metric in SLEEP_METRICS
+        }
+        stage_distribution = _sleep_stage_distribution(export["days"].get(latest_date))
+        schedule_sources = _sleep_schedule_sources(export["days"].get(latest_date))
+        comparisons_available = sum(
+            item["comparison"]["available"] for item in evidence.values()
+        )
+
+    if comparisons_available >= 5:
+        confidence = "moderate_sleep_baseline_coverage"
+    elif comparisons_available:
+        confidence = "limited_sleep_baseline_coverage"
+    else:
+        confidence = "insufficient_sleep_baseline_coverage"
+    limitations = [
+        "Sleep stage estimates, duration, and derived metrics depend on device wear and Garmin's algorithms.",
+        "Stage proportions use only the recorded deep, light, and REM durations; they are not a sleep-disorder assessment.",
+        "Sleep schedule source timestamps are retained as supplied and are not converted when the source timezone is unclear.",
+        "Garmin sleep HRV Status is a sleep-derived summary, not timestamped beat-to-beat RR data.",
+    ]
+    if latest_date is None:
+        limitations.append("No supported sleep measurements exist in the requested period.")
+    elif not comparisons_available:
+        limitations.append(
+            f"At least {MIN_BASELINE_SAMPLES} prior measurements per metric are required before a personal comparison is emitted."
+        )
+    return {
+        "schema_version": 1,
+        "analysis": "sleep",
+        "period": {
+            "start_date": export["start_date"],
+            "end_date": export["end_date"],
+            "latest_sleep_date": latest_date,
+        },
+        "data_quality": {
+            "date_coverage_rate": quality["period"]["date_coverage_rate"],
+            "metric_sample_counts": quality["metric_sample_counts"],
+            "readiness": quality["analysis_readiness"],
+        },
+        "evidence": evidence,
+        "latest_stage_distribution": stage_distribution,
+        "latest_schedule_sources": schedule_sources,
+        "comparisons_available": comparisons_available,
+        "confidence": confidence,
+        "limitations": limitations,
+        "medical_notice": MEDICAL_NOTICE,
+    }
 def analyze_export(kind: str, payload: Any) -> dict[str, Any]:
     if kind == "data-quality":
         return analyze_data_quality(payload)
     if kind == "recovery":
         return analyze_recovery(payload)
+    if kind == "sleep":
+        return analyze_sleep(payload)
     raise AnalysisInputError(f"unsupported analysis kind: {kind}")

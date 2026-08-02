@@ -109,6 +109,15 @@ $PY $CLI analyze recovery ~/garmin/july-core.json \
 
 It deliberately does not calculate a replacement “recovery score”, diagnose a condition, or claim why a measurement changed.
 
+`sleep` reports Garmin-provided sleep duration, deep/light/REM/awake components, sleep heart rate, sleep stress, and sleep HRV where available. It gives the latest stage proportions only over the recorded deep/light/REM durations, and applies the same 7-prior-measurement baseline rule to each metric.
+
+```bash
+$PY $CLI analyze sleep ~/garmin/july-core.json \
+  --output ~/garmin/july-sleep.json
+```
+
+Sleep start/end values are kept with their Garmin source field rather than converted when timezone semantics are unclear. This is descriptive sleep-trend analysis, not sleep-disorder screening.
+
 ## Activity and FIT data
 
 ```bash
@@ -153,7 +162,8 @@ The `raw` daily endpoint choices are shown by `raw --help`. They include `all`, 
 ## Development
 
 ```bash
-$PY -m unittest discover -s tests -v
+$PY -m pip install -r requirements-dev.txt
+$PY -m pytest -q
 $PY garmin_health_cli.py --help
 ```
 

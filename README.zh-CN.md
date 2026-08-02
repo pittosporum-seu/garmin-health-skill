@@ -109,6 +109,15 @@ $PY $CLI analyze recovery ~/garmin/july-core.json \
 
 它刻意不计算替代性的“恢复分数”，不诊断疾病，也不声称某个变化的原因。
 
+`sleep` 在数据可用时报告 Garmin 提供的睡眠时长、深/浅/REM/清醒组成、睡眠心率、睡眠压力和睡眠 HRV。最新睡眠分期占比只以实际记录到的深/浅/REM 时长为分母；每个指标同样遵循至少 7 个先前观测才进行基线比较的规则。
+
+```bash
+$PY $CLI analyze sleep ~/garmin/july-core.json \
+  --output ~/garmin/july-sleep.json
+```
+
+睡眠开始/结束时间会保留 Garmin 原字段；时区语义不明确时不擅自转换。这是描述性睡眠趋势分析，不是睡眠障碍筛查。
+
 ## 活动与 FIT 数据
 
 ```bash
@@ -153,7 +162,8 @@ $PY $CLI reproductive menstrual-calendar 2026-07-01 2026-07-31 \
 ## 开发
 
 ```bash
-$PY -m unittest discover -s tests -v
+$PY -m pip install -r requirements-dev.txt
+$PY -m pytest -q
 $PY garmin_health_cli.py --help
 ```
 

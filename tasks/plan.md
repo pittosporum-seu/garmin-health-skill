@@ -30,7 +30,7 @@ Add an offline, read-only analysis layer on top of `export-range` files. It must
 - Compare the latest valid day with a prior personal robust baseline; do not emit a result when there are insufficient samples.
 - Include evidence, baseline, coverage, confidence, and explicit limitations in pytest-verified output.
 
-### Phase 3: Sleep analysis
+### Phase 3: Sleep analysis — Complete
 
 **Acceptance criteria**
 

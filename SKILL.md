@@ -99,6 +99,14 @@ $PY $CLI analyze recovery ~/garmin/july-core.json --output ~/garmin/july-recover
 
 中位数、MAD 和最新值差异是描述性证据，不生成替代的恢复总分、疾病结论或因果解释。
 
+需要睡眠趋势时，运行 `sleep`，读取睡眠时长、深/浅/REM/清醒组成、睡眠心率、睡眠压力和睡眠 HRV；最新阶段占比只基于已记录的深/浅/REM 时长：
+
+```bash
+$PY $CLI analyze sleep ~/garmin/july-core.json --output ~/garmin/july-sleep.json
+```
+
+保留 Garmin 提供的入睡/起床时间字段，但在时区语义不明确时不转换。不得将此输出作为睡眠障碍筛查或诊断；缺少 7 个先前观测的指标不比较个人基线。
+
 ## 活动、逐秒流和 FIT
 
 ```bash

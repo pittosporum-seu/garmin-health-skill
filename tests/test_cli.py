@@ -99,12 +99,12 @@ class CommandTests(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["activity-stream", "1", "--max-chart", "0"])
 
-    def test_parser_accepts_offline_data_quality_analysis(self):
+    def test_parser_accepts_offline_sleep_analysis(self):
         args = cli.build_parser().parse_args(
-            ["analyze", "recovery", "range.json", "--stdout"]
+            ["analyze", "sleep", "range.json", "--stdout"]
         )
         self.assertEqual(args.command, "analyze")
-        self.assertEqual(args.kind, "recovery")
+        self.assertEqual(args.kind, "sleep")
         self.assertEqual(args.input, Path("range.json"))
 
     def test_analysis_command_reads_local_export_without_client(self):

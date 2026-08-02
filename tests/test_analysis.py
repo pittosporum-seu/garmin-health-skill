@@ -10,6 +10,7 @@ from garmin_health_analysis import (
     AnalysisInputError,
     analyze_data_quality,
     analyze_recovery,
+    analyze_sleep,
     validate_range_export,
 )
 
@@ -128,6 +129,86 @@ class DataQualityAnalysisTests(unittest.TestCase):
         self.assertNotIn("median", comparison)
         self.assertEqual(result["comparisons_available"], 0)
         self.assertEqual(result["confidence"], "insufficient_personal_baseline_coverage")
+
+    def test_sleep_reports_stage_distribution_and_duration_baseline(self):
+        days = {}
+        for day in range(1, 8):
+            payload = daily_payload(day)
+            payload["sleep"]["dailySleepDTO"].update(
+                {
+                    "sleepTimeSeconds": 25200,
+                    "deepSleepSeconds": 5400,
+                    "lightSleepSeconds": 12600,
+                    "remSleepSeconds": 7200,
+                    "awakeSleepSeconds": 1200,
+                    "sleepStartTimestampLocal": f"2026-08-{day:02d}T23:00:00",
+                    "sleepEndTimestampLocal": f"2026-08-{day + 1:02d}T06:00:00",
+                }
+            )
+            days[f"2026-08-{day:02d}"] = payload
+        latest = daily_payload(8)
+        latest["sleep"]["dailySleepDTO"].update(
+            {
+                "sleepTimeSeconds": 23400,
+                "deepSleepSeconds": 4500,
+                "lightSleepSeconds": 11700,
+                "remSleepSeconds": 7200,
+                "awakeSleepSeconds": 900,
+                "sleepStartTimestampLocal": "2026-08-08T23:30:00",
+                "sleepEndTimestampLocal": "2026-08-09T06:00:00",
+            }
+        )
+        days["2026-08-08"] = latest
+        payload = range_export(days)
+        payload["end_date"] = "2026-08-08"
+
+        result = analyze_sleep(payload)
+
+        duration = result["evidence"]["sleep_duration_seconds"]
+        stages = result["latest_stage_distribution"]
+        self.assertEqual(result["period"]["latest_sleep_date"], "2026-08-08")
+        self.assertEqual(duration["comparison"]["median"], 25200)
+        self.assertEqual(duration["comparison"]["latest_minus_median"], -1800)
+        self.assertEqual(stages["recorded_stage_seconds"], 23400)
+        self.assertEqual(stages["stages"]["deep"]["proportion_of_recorded_stages"], 0.1923)
+        self.assertEqual(
+            result["latest_schedule_sources"]["start"]["source_field"],
+            "sleepStartTimestampLocal",
+        )
+
+    def test_sleep_preserves_zero_measurements_without_inventing_stage_distribution(self):
+        payload = range_export(
+            {
+                "2026-08-01": {
+                    "sleep": {
+                        "dailySleepDTO": {
+                            "sleepTimeSeconds": 0,
+                            "deepSleepSeconds": 0,
+                            "lightSleepSeconds": 0,
+                            "remSleepSeconds": 0,
+                            "awakeSleepSeconds": 0,
+                        }
+                    }
+                }
+            }
+        )
+        payload["end_date"] = "2026-08-01"
+
+        result = analyze_sleep(payload)
+
+        self.assertEqual(result["evidence"]["sleep_awake_seconds"]["latest_value"], 0)
+        self.assertIsNone(result["latest_stage_distribution"])
+        self.assertEqual(result["comparisons_available"], 0)
+
+    def test_sleep_reports_missing_measurements_as_a_limitation(self):
+        payload = range_export({"2026-08-01": {"sleep": {}}})
+        payload["end_date"] = "2026-08-01"
+
+        result = analyze_sleep(payload)
+
+        self.assertIsNone(result["period"]["latest_sleep_date"])
+        self.assertEqual(result["evidence"], {})
+        self.assertIn("No supported sleep measurements", result["limitations"][-1])
 
 
 if __name__ == "__main__":
