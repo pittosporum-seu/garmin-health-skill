@@ -43,6 +43,20 @@ GARMIN_EMAIL='账号' GARMIN_PASSWORD='密码' $PY $CLI login
 
 `login` 会以仅所有者权限创建 token 目录；Skill 从不打印、导出或提交 token。
 
+## 稳定版本与更新
+
+已安装的 Hermes Skill 位于 `~/.hermes/skills/garmin-health`，是一个 Git 工作副本。每个稳定发布都使用不可变的 `vX.Y.Z` 标签；使用内置更新器可直接获取最新稳定标签，不会触碰被 Git 忽略的 `tokens/` 目录：
+
+```bash
+cd ~/.hermes/skills/garmin-health
+bash scripts/update-skill.sh --latest
+$PY $CLI --version
+```
+
+更新器会拒绝存在本地改动的工作区，只从本 GitHub 仓库获取标签，分离检出选定发布，校验 `VERSION` 与标签一致，并刷新运行依赖。先用 `bash scripts/update-skill.sh --latest --dry-run` 预览目标版本；需要固定版本时使用 `--version v1.0.0`。
+
+手动安装时，请从 [GitHub Releases](https://github.com/pittosporum-seu/garmin-health-skill/releases) 选择版本，再用 `git clone --branch vX.Y.Z --depth 1 ...` 克隆。若希望始终固定在发布版本，不要使用 `git pull`。
+
 ## 快速开始
 
 所有会返回个人数据的命令默认要求安全输出文件。仅在确认终端私密、且确实需要显示时才加 `--stdout`。
@@ -178,6 +192,8 @@ $PY -m pip install -r requirements-dev.txt
 $PY -m pytest -q
 $PY garmin_health_cli.py --help
 ```
+
+维护者发布流程：递增 `VERSION`、同步更新面向发布的文档、提交到 `main`，然后创建并推送匹配的 `vX.Y.Z` 标签。标签工作流会校验二者一致，并自动创建带生成说明的 GitHub Release。
 
 ## 许可证
 

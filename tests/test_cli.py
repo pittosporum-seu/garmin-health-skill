@@ -33,6 +33,12 @@ class SecureOutputTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
+    def test_version_option_reads_bundled_version(self):
+        expected = (CLI_PATH.parent / "VERSION").read_text(encoding="utf-8").strip()
+        with contextlib.redirect_stdout(io.StringIO()) as output, self.assertRaises(SystemExit):
+            cli.build_parser().parse_args(["--version"])
+        self.assertEqual(output.getvalue().strip(), f"garmin-health {expected}")
+
     def test_series_returns_consistent_error_envelope(self):
         args = SimpleNamespace(
             date="2026-08-01",

@@ -43,6 +43,20 @@ GARMIN_EMAIL='account' GARMIN_PASSWORD='password' $PY $CLI login
 
 `login` creates the token directory with owner-only permissions. Tokens are never printed, exported, or committed.
 
+## Stable releases and updates
+
+The installed Hermes skill is a Git checkout at `~/.hermes/skills/garmin-health`. Releases are immutable `vX.Y.Z` tags; use the bundled updater to fetch the latest stable tag without touching the ignored `tokens/` directory:
+
+```bash
+cd ~/.hermes/skills/garmin-health
+bash scripts/update-skill.sh --latest
+$PY $CLI --version
+```
+
+The updater refuses a working tree with local changes, fetches tags only from this GitHub repository, checks out the selected release in detached mode, verifies that `VERSION` matches the tag, and refreshes runtime dependencies. Preview the selected version first with `bash scripts/update-skill.sh --latest --dry-run`; pin a known release with `--version v1.0.0`.
+
+For a manual install, choose a version from [GitHub Releases](https://github.com/pittosporum-seu/garmin-health-skill/releases) and clone it with `git clone --branch vX.Y.Z --depth 1 ...`. Do not use `git pull` if you expect the install to remain pinned to a release.
+
 ## Quick start
 
 All commands that return personal data require a secure output file by default. Add `--stdout` only when the terminal is private and deliberately chosen.
@@ -178,6 +192,8 @@ $PY -m pip install -r requirements-dev.txt
 $PY -m pytest -q
 $PY garmin_health_cli.py --help
 ```
+
+Maintainers: bump `VERSION`, update the release-facing documentation, commit to `main`, then create and push the matching `vX.Y.Z` tag. The tag workflow verifies the match and creates the GitHub Release with generated notes.
 
 ## License
 

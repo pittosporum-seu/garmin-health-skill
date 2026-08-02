@@ -26,6 +26,12 @@ GARMIN_EMAIL='账号' GARMIN_PASSWORD='密码' $PY $CLI login
 
 `login` 将 token 目录设为 `0700`、其中的文件设为 `0600`。需要隔离账号时，设置 `GARMIN_TOKENSTORE`。
 
+## 版本与更新
+
+仅在用户明确要求更新时，进入 `~/.hermes/skills/garmin-health` 并运行 `bash scripts/update-skill.sh --latest`；更新器只接受本仓库的 `vX.Y.Z` 稳定发布标签，遇到本地改动会停止。更新后运行 `$PY $CLI --version` 和 `status` 验证版本与认证，且不得读取或输出 `tokens/` 内容。
+
+维护本 skill 时，递增 `VERSION`，同步更新发布说明，提交后推送同名 `vX.Y.Z` 标签。`.github/workflows/release.yml` 会校验标签与 `VERSION` 一致并创建 GitHub Release。
+
 ## 先确认用户意图和输出位置
 
 健康、活动、设备资料和生殖健康数据默认不会直接打印到终端。每个读取数据的命令必须：

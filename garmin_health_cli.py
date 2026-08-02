@@ -25,6 +25,7 @@ from typing import Any, Callable
 DEFAULT_TOKENSTORE = Path(
     os.getenv("GARMIN_TOKENSTORE", "~/.hermes/skills/garmin-health/tokens")
 ).expanduser()
+VERSION_FILE = Path(__file__).with_name("VERSION")
 DEFAULT_MAX_CHART = 100_000
 DEFAULT_RANGE_KINDS = ("stats", "hrv", "sleep", "training-readiness")
 
@@ -75,6 +76,15 @@ SERIES_KINDS = (
 )
 
 LARGE_RAW_KINDS = {"all", "sleep"}
+
+
+def skill_version() -> str:
+    """Return the release version bundled with this skill checkout."""
+    try:
+        version = VERSION_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+    return version or "unknown"
 
 
 def series_semantics(kind: str) -> dict[str, str]:
@@ -959,6 +969,7 @@ def add_output_options(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Garmin Connect 全量健康与活动数据（中国区）")
+    parser.add_argument("--version", action="version", version=f"garmin-health {skill_version()}")
     parser.add_argument(
         "--tokenstore",
         type=Path,
