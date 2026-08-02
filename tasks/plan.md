@@ -46,11 +46,19 @@ Add an offline, read-only analysis layer on top of `export-range` files. It must
 - Preserve unknown Body Battery source shapes as a limitation instead of guessing values.
 - Test supported and unsupported shapes; update both READMEs.
 
-### Final checkpoint
+### Final checkpoint — Complete
 
 - Run the full pytest suite, `py_compile`, dependency check, and skill validation.
 - Confirm every phase has its own Git commit and is pushed to `main`.
 - Update repository documentation and the local Garmin maintenance memory.
+
+**Verification completed 2026-08-02**
+
+- `python -m pip check`: no broken requirements.
+- `python -m pytest -q`: 19 passed.
+- `python -m py_compile garmin_health_analysis.py garmin_health_cli.py`: passed.
+- `quick_validate.py .`: skill metadata and naming are valid.
+- `garmin_health_cli.py analyze --help`: exposes all four offline analyses.
 
 ## Risks and mitigations
 
